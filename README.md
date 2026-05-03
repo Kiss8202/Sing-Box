@@ -1,9 +1,7 @@
 ## 🚀 一键安装
 
 ```
-wget -O /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
-chmod +x /usr/local/bin/install.sh
-bash /usr/local/bin/install.sh
+wget -O /root/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh && bash /root/install.sh
 ```
 ```
 当前出入站配置:
