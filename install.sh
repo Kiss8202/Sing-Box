@@ -186,10 +186,8 @@ setup_log_cleanup() {
     print_info "配置日志自动清理（7天 / 100M）..."
 
     if [[ $ALPINE -eq 1 ]]; then
-        # 安装 logrotate 和 dcron
         apk add --no-cache logrotate dcron >/dev/null 2>&1
 
-        # 配置 logrotate
         cat > /etc/logrotate.d/sing-box << 'EOF'
 /var/log/sing-box.log {
     daily
@@ -203,13 +201,11 @@ setup_log_cleanup() {
 }
 EOF
 
-        # 启用 dcron 并设置为开机启动
         rc-update add dcron default 2>/dev/null
         rc-service dcron start 2>/dev/null
 
         print_success "Alpine 日志清理已配置（logrotate + dcron）"
     else
-        # Debian / systemd
         mkdir -p /etc/systemd/journald.conf.d
         cat > /etc/systemd/journald.conf.d/sing-box-log.conf << 'EOF'
 [Journal]
