@@ -62,6 +62,8 @@ SOCKS_USER=""
 SOCKS_PASS=""
 
 DEFAULT_SNI="time.is"
+NEW_NODE_LINK=""           # 临时保存最新节点的分享链接
+NEW_NODE_EXTRA_INFO=""     # 临时保存最新节点的额外信息（UUID/密码/端口等）
 
 # ==================== 打印函数 ====================
 print_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -566,15 +568,10 @@ setup_reality() {
     ALL_LINKS_TEXT+="$line"; REALITY_LINKS+="$line"
     INBOUND_TAGS+=("vless-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("Reality"); INBOUND_SNIS+=("${SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "Reality 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${LINK}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "UUID: ${use_uuid}  |  端口: ${PORT}"
-    echo -e "伪装域名: ${SNI}"
-    echo ""
-    read -p "按回车继续..." _
+
+    # 保存新节点信息，待服务启动成功后显示
+    NEW_NODE_LINK="$LINK"
+    NEW_NODE_EXTRA_INFO="UUID: ${use_uuid}  |  端口: ${PORT}\n伪装域名: ${SNI}"
 }
 
 # Hysteria2
@@ -592,15 +589,9 @@ setup_hysteria2() {
     ALL_LINKS_TEXT+="$line"; HYSTERIA2_LINKS+="$line"
     INBOUND_TAGS+=("hy2-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("Hysteria2"); INBOUND_SNIS+=("${HY2_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "Hysteria2 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${LINK}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "密码: ${use_pass}  |  端口: ${PORT}"
-    echo -e "伪装域名: ${HY2_SNI}"
-    echo ""
-    read -p "按回车继续..." _
+
+    NEW_NODE_LINK="$LINK"
+    NEW_NODE_EXTRA_INFO="密码: ${use_pass}  |  端口: ${PORT}\n伪装域名: ${HY2_SNI}"
 }
 
 # SOCKS5
@@ -614,28 +605,19 @@ setup_socks5() {
         read -p "密码 [${default_pass}]: " use_pass; use_pass=${use_pass:-$default_pass}
         inbound="{\"type\":\"socks\",\"tag\":\"socks-in-${PORT}\",\"listen\":\"::\",\"listen_port\":${PORT},\"users\":[{\"username\":\"${use_user}\",\"password\":\"${use_pass}\"}]}"
         link="socks5://${use_user}:${use_pass}@${SERVER_IP}:${PORT}#SOCKS5-${SERVER_IP}"
+        NEW_NODE_EXTRA_INFO="用户名: ${use_user}  |  密码: ${use_pass}\n端口: ${PORT}"
     else
         inbound="{\"type\":\"socks\",\"tag\":\"socks-in-${PORT}\",\"listen\":\"::\",\"listen_port\":${PORT}}"
         link="socks5://${SERVER_IP}:${PORT}#SOCKS5-${SERVER_IP}"
+        NEW_NODE_EXTRA_INFO="无认证\n端口: ${PORT}"
     fi
     [[ -z "$INBOUNDS_JSON" ]] && INBOUNDS_JSON="$inbound" || INBOUNDS_JSON="${INBOUNDS_JSON},${inbound}"
     local line="[SOCKS5] ${SERVER_IP}:${PORT}\n${link}\n----------------------------------------\n\n"
     ALL_LINKS_TEXT+="$line"; SOCKS5_LINKS+="$line"
     INBOUND_TAGS+=("socks-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("SOCKS5"); INBOUND_SNIS+=(""); INBOUND_RELAY_TAGS+=("direct")
     print_success "SOCKS5 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${link}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    if [[ "$ENABLE_AUTH" =~ ^[Yy]$ ]]; then
-        echo -e "用户名: ${use_user}  |  密码: ${use_pass}"
-    else
-        echo -e "无认证"
-    fi
-    echo -e "端口: ${PORT}"
-    echo ""
-    read -p "按回车继续..." _
+
+    NEW_NODE_LINK="$link"
 }
 
 # ShadowTLS
@@ -655,15 +637,9 @@ setup_shadowtls() {
     ALL_LINKS_TEXT+="$line"; SHADOWTLS_LINKS+="$line"
     INBOUND_TAGS+=("shadowtls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("ShadowTLS v3"); INBOUND_SNIS+=("${SHADOWTLS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "ShadowTLS 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${LINK}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "ShadowTLS密码: ${use_stls_pass}  |  SS密码: ${use_ss_pass}"
-    echo -e "端口: ${PORT}  |  伪装域名: ${SHADOWTLS_SNI}"
-    echo ""
-    read -p "按回车继续..." _
+
+    NEW_NODE_LINK="$LINK"
+    NEW_NODE_EXTRA_INFO="ShadowTLS密码: ${use_stls_pass}  |  SS密码: ${use_ss_pass}\n端口: ${PORT}  |  伪装域名: ${SHADOWTLS_SNI}"
 }
 
 # HTTPS
@@ -680,15 +656,9 @@ setup_https() {
     ALL_LINKS_TEXT+="$line"; HTTPS_LINKS+="$line"
     INBOUND_TAGS+=("vless-tls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("HTTPS"); INBOUND_SNIS+=("${HTTPS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "HTTPS 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${LINK}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "UUID: ${use_uuid}  |  端口: ${PORT}"
-    echo -e "伪装域名: ${HTTPS_SNI}"
-    echo ""
-    read -p "按回车继续..." _
+
+    NEW_NODE_LINK="$LINK"
+    NEW_NODE_EXTRA_INFO="UUID: ${use_uuid}  |  端口: ${PORT}\n伪装域名: ${HTTPS_SNI}"
 }
 
 # AnyTLS
@@ -705,15 +675,9 @@ setup_anytls() {
     ALL_LINKS_TEXT+="$line"; ANYTLS_LINKS+="$line"
     INBOUND_TAGS+=("anytls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("AnyTLS"); INBOUND_SNIS+=("${ANYTLS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "AnyTLS 添加完成"; save_links_to_files
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}✅ 节点链接（可直接复制）:${NC}"
-    echo -e "${YELLOW}${LINK}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "密码: ${use_pass}  |  端口: ${PORT}"
-    echo -e "伪装域名: ${ANYTLS_SNI}"
-    echo ""
-    read -p "按回车继续..." _
+
+    NEW_NODE_LINK="$LINK"
+    NEW_NODE_EXTRA_INFO="密码: ${use_pass}  |  端口: ${PORT}\n伪装域名: ${ANYTLS_SNI}"
 }
 
 # 其他辅助函数
@@ -737,6 +701,12 @@ regenerate_all_links() {
 }
 # ==================== 协议选择菜单 ====================
 show_menu() {
+    # 检查 sing-box 是否已安装
+    if ! command -v sing-box &>/dev/null; then
+        print_error "sing-box 未安装，请先在主菜单选择 [7] 安装/更新 sing-box"
+        return 1
+    fi
+
     show_banner
     echo -e "${YELLOW}请选择要添加的协议节点:${NC}"
     echo ""
@@ -753,7 +723,11 @@ show_menu() {
     echo -e "${GREEN}[6]${NC} AnyTLS ${CYAN}→ 通用TLS协议${NC}"
     echo ""
     read -p "选择 [1-6]: " choice
-    
+
+    # 清空上次添加的节点显示信息
+    NEW_NODE_LINK=""
+    NEW_NODE_EXTRA_INFO=""
+
     case $choice in
         1) setup_reality ;;
         2) setup_hysteria2 ;;
@@ -763,10 +737,12 @@ show_menu() {
         6) setup_anytls ;;
         *) print_error "无效选项"; return 1 ;;
     esac
-    
+
     if [[ -n "$INBOUNDS_JSON" ]]; then
-        generate_config || return 1
-        start_svc || return 1
+        if generate_config && start_svc; then
+            # 成功后才显示新节点的链接
+            show_new_node_info
+        fi
     fi
 }
 
