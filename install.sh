@@ -109,21 +109,40 @@ install_singbox() {
     LATEST=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name' | sed 's/v//')
     [[ -z "$LATEST" ]] && LATEST="1.12.0"
 
-    if command -v sing-box &>/dev/null; then
-        CURRENT=$(sing-box version 2>&1 | grep -oP 'sing-box version \K[0-9.]+' || echo "unknown")
-        print_info "当前版本: ${CURRENT}，最新版本: ${LATEST}"
-        if [[ "$CURRENT" == "$LATEST" ]]; then
-            print_success "已是最新版本"; return 0
+        if command -v sing-box &>/dev/null; then
+        CURRENT=$(sing-box version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        [[ -z "$CURRENT" ]] && CURRENT="unknown"
+
+        if [[ "$CURRENT" == "unknown" ]]; then
+            print_warning "无法检测当前版本，可能未正确安装或 PATH 异常"
+            echo -e "${YELLOW}建议更新到最新版本 ${LATEST}${NC}"
+            echo -e "  ${GREEN}[1]${NC} 更新到最新版本 (推荐)"
+            echo -e "  ${GREEN}[2]${NC} 不更新，继续使用"
+            echo -e "  ${GREEN}[0]${NC} 退出"
+            read -p "请选择 [0-2]: " ver_choice
+            case $ver_choice in
+                1) ;;
+                2) print_info "跳过更新"; return 0 ;;
+                0) exit 0 ;;
+                *) print_info "无效选择，默认更新" ;;
+            esac
+        else
+            print_info "当前版本: ${CURRENT}，最新版本: ${LATEST}"
+            if [[ "$CURRENT" == "$LATEST" ]]; then
+                print_success "已是最新版本"; return 0
+            fi
+            echo -e "${YELLOW}发现新版本！ 当前:${GREEN}${CURRENT}${NC} 最新:${GREEN}${LATEST}${NC}"
+            echo -e "  ${GREEN}[1]${NC} 更新  ${GREEN}[2]${NC} 不更新  ${GREEN}[0]${NC} 退出"
+            read -p "选择: " ver_choice
+            case $ver_choice in
+                1) ;;
+                2) print_info "跳过更新"; return 0 ;;
+                0) exit 0 ;;
+                *) print_error "无效，跳过"; return 0 ;;
+            esac
         fi
-        echo -e "${YELLOW}发现新版本！ 当前:${GREEN}${CURRENT}${NC} 最新:${GREEN}${LATEST}${NC}"
-        echo -e "  ${GREEN}[1]${NC} 更新  ${GREEN}[2]${NC} 不更新  ${GREEN}[0]${NC} 退出"
-        read -p "选择: " ver_choice
-        case $ver_choice in
-            1) ;;
-            2) print_info "跳过更新"; return 0 ;;
-            0) exit 0 ;;
-            *) print_error "无效，跳过"; return 0 ;;
-        esac
+    else
+        print_info "sing-box 未安装，准备下载安装..."
     fi
 
     print_info "下载 sing-box v${LATEST}..."
