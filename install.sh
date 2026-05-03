@@ -860,9 +860,9 @@ setup_reality() {
     echo ""
     read_port_with_check 443
     
-    echo -e "${YELLOW}请输入伪装域名（建议使用常见HTTPS网站域名）${NC}"
-    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, www.google.com${NC}"
-    read -p "伪装域名 [${DEFAULT_SNI}]: " SNI
+    echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
+    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
+    read -p "SNI域名 [${DEFAULT_SNI}]: " SNI
     SNI=${SNI:-${DEFAULT_SNI}}
     
     print_info "生成配置文件..."
@@ -914,9 +914,9 @@ setup_hysteria2() {
     echo ""
     read_port_with_check 443
     
-    echo -e "${YELLOW}请输入伪装域名（建议使用常见HTTPS网站域名）${NC}"
-    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, www.google.com${NC}"
-    read -p "伪装域名 [${DEFAULT_SNI}]: " HY2_SNI
+    echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
+    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
+    read -p "SNI域名 [${DEFAULT_SNI}]: " HY2_SNI
     HY2_SNI=${HY2_SNI:-${DEFAULT_SNI}}
     
     print_info "为 ${HY2_SNI} 生成自签证书..."
@@ -1018,9 +1018,9 @@ setup_shadowtls() {
     echo ""
     read_port_with_check 443
     
-    echo -e "${YELLOW}请输入伪装域名（建议使用常见HTTPS网站域名）${NC}"
-    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, www.google.com${NC}"
-    read -p "伪装域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI
+    echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
+    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
+    read -p "SNI域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI
     SHADOWTLS_SNI=${SHADOWTLS_SNI:-${DEFAULT_SNI}}
     
     print_info "生成配置文件..."
@@ -1164,9 +1164,9 @@ setup_https() {
     echo ""
     read_port_with_check 443
     
-    echo -e "${YELLOW}请输入伪装域名（建议使用常见HTTPS网站域名）${NC}"
-    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, www.google.com${NC}"
-    read -p "伪装域名 [${DEFAULT_SNI}]: " HTTPS_SNI
+    echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
+    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
+    read -p "SNI域名 [${DEFAULT_SNI}]: " HTTPS_SNI
     HTTPS_SNI=${HTTPS_SNI:-${DEFAULT_SNI}}
     
     print_info "为 ${HTTPS_SNI} 生成自签证书..."
@@ -1217,9 +1217,9 @@ setup_anytls() {
     echo ""
     read_port_with_check 443
     
-    echo -e "${YELLOW}请输入伪装域名（建议使用常见HTTPS网站域名）${NC}"
-    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, www.google.com${NC}"
-    read -p "伪装域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
+    echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
+    echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
+    read -p "SNI域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
     ANYTLS_SNI=${ANYTLS_SNI:-${DEFAULT_SNI}}
     
     print_info "为 ${ANYTLS_SNI} 生成自签证书..."
