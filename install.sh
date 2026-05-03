@@ -874,6 +874,7 @@ main() {
     load_ip_config
     [[ -z "${SERVER_IP}" ]] && get_ip
     setup_sb_shortcut
+    setup_keepalive enable
     [[ -f "${CONFIG_FILE}" ]] && load_inbounds_from_config
     load_relays_from_file
     load_links_from_files
