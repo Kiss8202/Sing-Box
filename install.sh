@@ -273,6 +273,10 @@ supervisor="supervise-daemon"
 respawn_delay=10
 respawn_max=0
 
+# 👇 增加这两行，确保日志写入文件
+stdout_log="/var/log/sing-box.log"
+stderr_log="/var/log/sing-box.log"
+
 depend() {
     need net
     after firewall
