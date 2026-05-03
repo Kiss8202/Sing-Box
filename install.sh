@@ -700,6 +700,7 @@ regenerate_all_links() {
     fi
 }
 # 放在 setup_anytls 函数之后，show_menu 之前
+# 放在所有 setup_* 函数之后，show_menu 之前
 show_new_node_info() {
     if [[ -z "$NEW_NODE_LINK" ]]; then
         return
@@ -725,6 +726,7 @@ show_menu() {
 
     # 确保密钥已生成（首次安装后需要）
     gen_keys
+}
 
     show_banner
     echo -e "${YELLOW}请选择要添加的协议节点:${NC}"
@@ -1250,16 +1252,39 @@ delete_self() {
 # ==================== 快捷命令 ====================
 setup_sb_shortcut() {
     print_info "创建快捷命令 sb..."
+
+    # 判断当前脚本是否为物理文件，如果不是（管道执行），则自动保存到磁盘
     if [[ ! -f "${SCRIPT_PATH}" ]]; then
-        print_warning "当前脚本并非磁盘文件，跳过创建 sb"
-        return
+        print_warning "检测到管道执行，正在保存脚本到本地..."
+        if [[ "$0" == "bash" ]] || [[ "$0" == "/dev/fd/"* ]] || [[ ! -f "$0" ]]; then
+            # 管道执行：将当前脚本内容保存到固定路径
+            if command -v wget &>/dev/null; then
+                wget -q -O /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
+                chmod +x /usr/local/bin/install.sh
+                print_success "脚本已保存到 /usr/local/bin/install.sh"
+            elif command -v curl &>/dev/null; then
+                curl -sL -o /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
+                chmod +x /usr/local/bin/install.sh
+                print_success "脚本已保存到 /usr/local/bin/install.sh"
+            else
+                print_error "无法保存脚本，请手动安装 wget 或 curl"
+                return
+            fi
+            SCRIPT_PATH="/usr/local/bin/install.sh"
+        fi
     fi
-    cat > /usr/local/bin/sb << EOSB
+
+    # 创建 sb 快捷命令
+    if [[ -f "${SCRIPT_PATH}" ]]; then
+        cat > /usr/local/bin/sb << EOSB
 #!/bin/bash
 bash "${SCRIPT_PATH}" "\$@"
 EOSB
-    chmod +x /usr/local/bin/sb
-    print_success "已创建快捷命令: sb"
+        chmod +x /usr/local/bin/sb
+        print_success "已创建快捷命令: sb"
+    else
+        print_warning "无法创建快捷命令: 脚本文件不存在"
+    fi
 }
 
 # ==================== 配置生成 ====================
