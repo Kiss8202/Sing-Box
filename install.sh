@@ -9,6 +9,9 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
 
+# 避免 locale 警告
+export LC_ALL=C
+
 # ==================== 路径配置 ====================
 CONFIG_FILE="/etc/sing-box/config.json"
 INSTALL_DIR="/usr/local/bin"
@@ -43,7 +46,7 @@ RELAY_FILE="/etc/sing-box/relays.conf"
 INBOUND_TAGS=()                  # 节点标签
 INBOUND_PORTS=()                 # 节点端口
 INBOUND_PROTOS=()                # 节点协议
-INBOUND_RELAY_TAGS=()            # 节点绑定的中转标签（"direct" 为直连）
+INBOUND_RELAY_TAGS=()            # 节点绑定的中转标签
 INBOUND_SNIS=()                  # 节点 SNI
 
 # 全局密钥（仅用于 Reality 公私钥等不变部分）
@@ -66,6 +69,7 @@ print_success() { echo -e "${GREEN}[✓]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 print_error()   { echo -e "${RED}[✗]${NC} $1"; }
 show_banner()   { clear; echo ""; }
+
 # ==================== 系统检测（兼容 Alpine） ====================
 detect_system() {
     if [[ -f /etc/os-release ]]; then
@@ -179,6 +183,7 @@ gen_cert_for_sni() {
         -out "${node_cert_dir}/cert.pem" -subj "/C=US/ST=California/L=Cupertino/O=Apple Inc./CN=${sni}" 2>/dev/null
     print_success "证书生成完成"
 }
+
 # ==================== 密钥管理 ====================
 gen_keys() {
     print_info "生成密钥和 UUID..."
@@ -217,7 +222,6 @@ SOCKS_PASS="${SOCKS_PASS}"
 EOF
     chmod 600 "${KEY_FILE}"
 }
-
 # ==================== 链接文件管理 ====================
 save_links_to_files() {
     mkdir -p "${LINK_DIR}"
@@ -253,12 +257,11 @@ load_inbounds_from_config() {
     for ((i=0; i<inbounds_count; i++)); do
         local inbound=$(jq -c ".inbounds[${i}]" "${CONFIG_FILE}" 2>/dev/null)
         [[ -z "$inbound" ]] && continue
-        # 拼接完整的 INBOUNDS_JSON
         [[ -z "$inbound_list" ]] && inbound_list="$inbound" || inbound_list="${inbound_list},${inbound}"
         local tag=$(echo "$inbound" | jq -r '.tag' 2>/dev/null)
         local port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
         local type=$(echo "$inbound" | jq -r '.type' 2>/dev/null)
-        [[ "$tag" == "shadowsocks-in-"* ]] && continue   # 不显示内部组件
+        [[ "$tag" == "shadowsocks-in-"* ]] && continue
 
         local proto="unknown"; local sni=""
         if [[ "$tag" == *"vless-in-"* ]]; then proto="Reality"; sni=$(echo "$inbound" | jq -r '.tls.server_name // ""' 2>/dev/null)
@@ -299,7 +302,7 @@ regenerate_links_from_config() {
         local type=$(echo "$inbound" | jq -r '.type' 2>/dev/null)
         local port=$(echo "$inbound" | jq -r '.listen_port' 2>/dev/null)
         case "$type" in
-            vless) # 包含 Reality 和 HTTPS
+            vless)
                 if [[ "$(echo "$inbound" | jq -r '.tls.enabled // false')" == "true" ]]; then
                     if [[ "$(echo "$inbound" | jq -r '.tls.reality.enabled // false')" == "true" ]]; then
                         local uuid=$(echo "$inbound" | jq -r '.users[0].uuid // ""')
@@ -548,7 +551,6 @@ parse_trojan_link() {
     save_relays_to_file
     print_success "已添加 Trojan 中转"
 }
-
 # ==================== 节点添加（每个节点独立随机凭证） ====================
 # Reality
 setup_reality() {
@@ -1198,7 +1200,7 @@ ip_config_menu() {
 
 # ==================== 保活（cron + 开机自启 cron） ====================
 setup_keepalive() {
-    # 确保 cron 守护进程已启动且开机自启（Alpine 需手动处理）
+    # 确保 cron 守护进程已启动且开机自启
     if command -v systemctl &>/dev/null; then
         systemctl enable cron 2>/dev/null || systemctl enable crond 2>/dev/null || true
         systemctl start cron 2>/dev/null || systemctl start crond 2>/dev/null || true
@@ -1260,6 +1262,77 @@ EOSB
     print_success "已创建快捷命令: sb"
 }
 
+# ==================== 配置生成 ====================
+generate_config() {
+    print_info "生成最终配置文件..."
+    [[ -z "$INBOUNDS_JSON" ]] && { print_error "未找到任何入站节点，请先添加节点"; return 1; }
+    load_relays_from_file
+
+    local outbounds_array=()
+    for relay_json in "${RELAY_JSONS[@]}"; do outbounds_array+=("$relay_json"); done
+    outbounds_array+=('{"type": "direct", "tag": "direct"}')
+    local outbounds="["
+    for i in "${!outbounds_array[@]}"; do
+        [[ $i -gt 0 ]] && outbounds+=", "
+        outbounds+="${outbounds_array[$i]}"
+    done
+    outbounds+="]"
+
+    local route_rules=()
+    for i in "${!INBOUND_TAGS[@]}"; do
+        local rt="${INBOUND_RELAY_TAGS[$i]}"
+        [[ "$rt" != "direct" ]] && route_rules+=("{\"inbound\":[\"${INBOUND_TAGS[$i]}\"],\"outbound\":\"${rt}\"}")
+    done
+
+    local route_json
+    if [[ ${#route_rules[@]} -gt 0 ]]; then
+        route_json="{\"rules\":["
+        for i in "${!route_rules[@]}"; do
+            [[ $i -gt 0 ]] && route_json+=","
+            route_json+="${route_rules[$i]}"
+        done
+        route_json+="],\"final\":\"direct\",\"default_domain_resolver\":\"local\"}"
+    else
+        route_json="{\"final\":\"direct\",\"default_domain_resolver\":\"local\"}"
+    fi
+
+    local dns_json
+    dns_json='{
+    "servers": [
+      {"tag": "local", "type": "local"},
+      {"tag": "remote", "type": "udp", "server": "8.8.8.8"}
+    ],
+    "final": "remote"'
+    [[ "$OUTBOUND_IP_MODE" == "ipv6" ]] && dns_json+=',"strategy": "prefer_ipv6"'
+    [[ "$OUTBOUND_IP_MODE" == "ipv4" ]] && dns_json+=',"strategy": "prefer_ipv4"'
+    dns_json+='}'
+
+    cat > ${CONFIG_FILE} << EOFCONFIG
+{
+  "log": {"level": "info", "timestamp": true},
+  "dns": ${dns_json},
+  "inbounds": [${INBOUNDS_JSON}],
+  "outbounds": ${outbounds},
+  "route": ${route_json}
+}
+EOFCONFIG
+    print_success "配置文件生成完成"
+}
+
+start_svc() {
+    print_info "验证配置文件..."
+    ${INSTALL_DIR}/sing-box check -c ${CONFIG_FILE} >/dev/null 2>&1 || { print_error "配置验证失败"; cat ${CONFIG_FILE}; return 1; }
+    if command -v systemctl &>/dev/null; then
+        systemctl restart sing-box
+        sleep 2
+        systemctl is-active --quiet sing-box && print_success "服务启动成功" || { print_error "启动失败"; journalctl -u sing-box -n 10 --no-pager; return 1; }
+    elif command -v rc-service &>/dev/null; then
+        rc-service sing-box restart
+        sleep 2
+        rc-service sing-box status &>/dev/null && print_success "服务启动成功" || print_error "启动失败"
+    fi
+}
+
 # ==================== 主菜单 ====================
 show_main_menu() {
     show_banner
@@ -1276,7 +1349,6 @@ show_main_menu() {
     fi
     echo -e "  入站模式: ${GREEN}${INBOUND_IP_MODE}${NC}     出站模式: ${GREEN}${OUTBOUND_IP_MODE}${NC}"
     echo -e "  当前节点数: ${GREEN}${#INBOUND_TAGS[@]}${NC}"
-    # 显示保活状态
     if [[ -f /etc/cron.d/sing-box-keepalive ]]; then
         echo -e "  保活任务: ${GREEN}已开启${NC}"
     else
@@ -1330,3 +1402,26 @@ main_menu() {
         [[ "$m_choice" != "0" ]] && read -p "按回车返回主菜单..." _
     done
 }
+
+# ==================== 初始化入口 ====================
+main() {
+    [[ $EUID -ne 0 ]] && { print_error "需要 root 权限"; exit 1; }
+    detect_system
+    ensure_deps
+    mkdir -p /etc/sing-box
+    if ! command -v sing-box &>/dev/null; then
+        print_warning "sing-box 未安装，请从主菜单选择 [7] 先安装"
+    else
+        gen_keys
+    fi
+    load_ip_config
+    [[ -z "${SERVER_IP}" ]] && get_ip
+    setup_sb_shortcut
+    [[ -f "${CONFIG_FILE}" ]] && load_inbounds_from_config
+    load_relays_from_file
+    load_links_from_files
+    [[ -f "${CONFIG_FILE}" && -z "$ALL_LINKS_TEXT" ]] && regenerate_links_from_config
+    main_menu
+}
+
+main
