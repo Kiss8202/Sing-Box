@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Sing-box 一键安装管理脚本 - 完整版（已修复 sing-box 1.12.0+ DNS Legacy 兼容问题）
-# 支持协议: Reality, Hysteria2, SOCKS5, ShadowTLS, HTTPS, AnyTLS
-# 支持功能: 节点管理, 中转配置, 链接查看, 完整卸载
-
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -252,6 +248,7 @@ save_links_to_files() {
     echo -en "${HTTPS_LINKS}" > "${HTTPS_LINKS_FILE}"
     echo -en "${ANYTLS_LINKS}" > "${ANYTLS_LINKS_FILE}"
     
+    chmod 700 "${LINK_DIR}" 2>/dev/null || true
     print_success "链接已保存到 ${LINK_DIR}"
 }
 
