@@ -1,5 +1,5 @@
+cat > /usr/local/bin/install.sh << 'SCRIPT_END'
 #!/bin/bash
-
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -9,7 +9,6 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
 
-# 避免 locale 警告
 export LC_ALL=C
 
 # ==================== 路径配置 ====================
@@ -26,30 +25,28 @@ SOCKS5_LINKS_FILE="${LINK_DIR}/socks5.txt"
 SHADOWTLS_LINKS_FILE="${LINK_DIR}/shadowtls.txt"
 HTTPS_LINKS_FILE="${LINK_DIR}/https.txt"
 ANYTLS_LINKS_FILE="${LINK_DIR}/anytls.txt"
-
 SCRIPT_PATH=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
 
 # ==================== 全局变量 ====================
-INBOUNDS_JSON=""                 # 所有入站 JSON 字符串
-ALL_LINKS_TEXT=""                # 全部链接文本
-SERVER_IP=""                     # 主 IPv4 地址
-SERVER_IPV6=""                   # IPv6 地址
-INBOUND_IP_MODE="ipv4"           # 入站监听地址族
-OUTBOUND_IP_MODE="dual"          # 出站连接地址族
+INBOUNDS_JSON=""
+ALL_LINKS_TEXT=""
+SERVER_IP=""
+SERVER_IPV6=""
+INBOUND_IP_MODE="ipv4"
+OUTBOUND_IP_MODE="dual"
 IP_CONFIG_FILE="/etc/sing-box/ip_config.conf"
 
-RELAY_TAGS=()                    # 中转标签
-RELAY_JSONS=()                   # 中转 JSON 配置
-RELAY_DESCS=()                   # 中转描述
+RELAY_TAGS=()
+RELAY_JSONS=()
+RELAY_DESCS=()
 RELAY_FILE="/etc/sing-box/relays.conf"
 
-INBOUND_TAGS=()                  # 节点标签
-INBOUND_PORTS=()                 # 节点端口
-INBOUND_PROTOS=()                # 节点协议
-INBOUND_RELAY_TAGS=()            # 节点绑定的中转标签
-INBOUND_SNIS=()                  # 节点 SNI
+INBOUND_TAGS=()
+INBOUND_PORTS=()
+INBOUND_PROTOS=()
+INBOUND_RELAY_TAGS=()
+INBOUND_SNIS=()
 
-# 全局密钥（仅用于 Reality 公私钥等不变部分）
 UUID=""
 REALITY_PRIVATE=""
 REALITY_PUBLIC=""
@@ -62,8 +59,8 @@ SOCKS_USER=""
 SOCKS_PASS=""
 
 DEFAULT_SNI="time.is"
-NEW_NODE_LINK=""           # 临时保存最新节点的分享链接
-NEW_NODE_EXTRA_INFO=""     # 临时保存最新节点的额外信息（UUID/密码/端口等）
+NEW_NODE_LINK=""
+NEW_NODE_EXTRA_INFO=""
 
 # ==================== 打印函数 ====================
 print_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -72,7 +69,7 @@ print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 print_error()   { echo -e "${RED}[✗]${NC} $1"; }
 show_banner()   { clear; echo ""; }
 
-# ==================== 系统检测（兼容 Alpine） ====================
+# ==================== 系统检测 ====================
 detect_system() {
     if [[ -f /etc/os-release ]]; then
         source /etc/os-release
@@ -107,7 +104,7 @@ ensure_deps() {
     print_success "依赖检查完成"
 }
 
-# ==================== sing-box 安装/更新（手动触发） ====================
+# ==================== sing-box 安装/更新 ====================
 install_or_update_singbox() {
     ensure_deps || { print_error "依赖安装失败"; return 1; }
 
@@ -142,7 +139,6 @@ install_or_update_singbox() {
     install -Dm755 /tmp/sing-box-${LATEST}-linux-${ARCH}/sing-box ${INSTALL_DIR}/sing-box
     rm -rf /tmp/sb.tar.gz /tmp/sing-box-*
 
-    # 创建服务
     if command -v systemctl &>/dev/null; then
         cat > /etc/systemd/system/sing-box.service << 'EOFSVC'
 [Unit]
@@ -224,6 +220,7 @@ SOCKS_PASS="${SOCKS_PASS}"
 EOF
     chmod 600 "${KEY_FILE}"
 }
+
 # ==================== 链接文件管理 ====================
 save_links_to_files() {
     mkdir -p "${LINK_DIR}"
@@ -278,7 +275,6 @@ load_inbounds_from_config() {
     done
     INBOUNDS_JSON="$inbound_list"
 
-    # 恢复中转规则
     local route_rules=$(jq -c '.route.rules[]? // empty' "${CONFIG_FILE}" 2>/dev/null)
     [[ -n "$route_rules" ]] && while IFS= read -r rule; do
         local inbound_array=$(echo "$rule" | jq -r '.inbound[]? // empty' 2>/dev/null)
@@ -363,6 +359,7 @@ regenerate_links_from_config() {
     save_links_to_files
     print_success "链接重新生成完成"
 }
+
 # ==================== 网络工具 ====================
 get_ip() {
     local ipv4=$(curl -s4m5 ifconfig.me || curl -s4m5 api.ipify.org || curl -s4m5 ip.sb)
@@ -553,8 +550,8 @@ parse_trojan_link() {
     save_relays_to_file
     print_success "已添加 Trojan 中转"
 }
+
 # ==================== 节点添加（每个节点独立随机凭证） ====================
-# Reality
 setup_reality() {
     echo ""; read_port_with_check 443
     read -p "伪装域名 [${DEFAULT_SNI}]: " SNI; SNI=${SNI:-${DEFAULT_SNI}}
@@ -568,13 +565,10 @@ setup_reality() {
     ALL_LINKS_TEXT+="$line"; REALITY_LINKS+="$line"
     INBOUND_TAGS+=("vless-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("Reality"); INBOUND_SNIS+=("${SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "Reality 添加完成"; save_links_to_files
-
-    # 保存新节点信息，待服务启动成功后显示
     NEW_NODE_LINK="$LINK"
     NEW_NODE_EXTRA_INFO="UUID: ${use_uuid}  |  端口: ${PORT}\n伪装域名: ${SNI}"
 }
 
-# Hysteria2
 setup_hysteria2() {
     echo ""; read_port_with_check 443
     read -p "伪装域名 [${DEFAULT_SNI}]: " HY2_SNI; HY2_SNI=${HY2_SNI:-${DEFAULT_SNI}}
@@ -589,12 +583,10 @@ setup_hysteria2() {
     ALL_LINKS_TEXT+="$line"; HYSTERIA2_LINKS+="$line"
     INBOUND_TAGS+=("hy2-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("Hysteria2"); INBOUND_SNIS+=("${HY2_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "Hysteria2 添加完成"; save_links_to_files
-
     NEW_NODE_LINK="$LINK"
     NEW_NODE_EXTRA_INFO="密码: ${use_pass}  |  端口: ${PORT}\n伪装域名: ${HY2_SNI}"
 }
 
-# SOCKS5
 setup_socks5() {
     echo ""; read_port_with_check 1080
     read -p "启用认证? [Y/n]: " ENABLE_AUTH; ENABLE_AUTH=${ENABLE_AUTH:-Y}
@@ -616,11 +608,9 @@ setup_socks5() {
     ALL_LINKS_TEXT+="$line"; SOCKS5_LINKS+="$line"
     INBOUND_TAGS+=("socks-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("SOCKS5"); INBOUND_SNIS+=(""); INBOUND_RELAY_TAGS+=("direct")
     print_success "SOCKS5 添加完成"; save_links_to_files
-
     NEW_NODE_LINK="$link"
 }
 
-# ShadowTLS
 setup_shadowtls() {
     echo ""; read_port_with_check 443
     read -p "伪装域名 [${DEFAULT_SNI}]: " SHADOWTLS_SNI; SHADOWTLS_SNI=${SHADOWTLS_SNI:-${DEFAULT_SNI}}
@@ -637,12 +627,10 @@ setup_shadowtls() {
     ALL_LINKS_TEXT+="$line"; SHADOWTLS_LINKS+="$line"
     INBOUND_TAGS+=("shadowtls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("ShadowTLS v3"); INBOUND_SNIS+=("${SHADOWTLS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "ShadowTLS 添加完成"; save_links_to_files
-
     NEW_NODE_LINK="$LINK"
     NEW_NODE_EXTRA_INFO="ShadowTLS密码: ${use_stls_pass}  |  SS密码: ${use_ss_pass}\n端口: ${PORT}  |  伪装域名: ${SHADOWTLS_SNI}"
 }
 
-# HTTPS
 setup_https() {
     echo ""; read_port_with_check 443
     read -p "伪装域名 [${DEFAULT_SNI}]: " HTTPS_SNI; HTTPS_SNI=${HTTPS_SNI:-${DEFAULT_SNI}}
@@ -656,12 +644,10 @@ setup_https() {
     ALL_LINKS_TEXT+="$line"; HTTPS_LINKS+="$line"
     INBOUND_TAGS+=("vless-tls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("HTTPS"); INBOUND_SNIS+=("${HTTPS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "HTTPS 添加完成"; save_links_to_files
-
     NEW_NODE_LINK="$LINK"
     NEW_NODE_EXTRA_INFO="UUID: ${use_uuid}  |  端口: ${PORT}\n伪装域名: ${HTTPS_SNI}"
 }
 
-# AnyTLS
 setup_anytls() {
     echo ""; read_port_with_check 443
     read -p "伪装域名 [${DEFAULT_SNI}]: " ANYTLS_SNI; ANYTLS_SNI=${ANYTLS_SNI:-${DEFAULT_SNI}}
@@ -675,12 +661,10 @@ setup_anytls() {
     ALL_LINKS_TEXT+="$line"; ANYTLS_LINKS+="$line"
     INBOUND_TAGS+=("anytls-in-${PORT}"); INBOUND_PORTS+=("${PORT}"); INBOUND_PROTOS+=("AnyTLS"); INBOUND_SNIS+=("${ANYTLS_SNI}"); INBOUND_RELAY_TAGS+=("direct")
     print_success "AnyTLS 添加完成"; save_links_to_files
-
     NEW_NODE_LINK="$LINK"
     NEW_NODE_EXTRA_INFO="密码: ${use_pass}  |  端口: ${PORT}\n伪装域名: ${ANYTLS_SNI}"
 }
 
-# 其他辅助函数
 cleanup_links() {
     rm -rf "${LINK_DIR}" 2>/dev/null || true
     ALL_LINKS_TEXT=""; REALITY_LINKS=""; HYSTERIA2_LINKS=""; SOCKS5_LINKS=""; SHADOWTLS_LINKS=""; HTTPS_LINKS=""; ANYTLS_LINKS=""
@@ -699,8 +683,7 @@ regenerate_all_links() {
         return 1
     fi
 }
-# 放在 setup_anytls 函数之后，show_menu 之前
-# 放在所有 setup_* 函数之后，show_menu 之前
+
 show_new_node_info() {
     if [[ -z "$NEW_NODE_LINK" ]]; then
         return
@@ -716,18 +699,15 @@ show_new_node_info() {
     echo ""
     read -p "按回车继续..." _
 }
-# ==================== 协议选择菜单 ====================
+
+# ==================== show_menu：添加节点入口 ====================
 show_menu() {
-    # 检查 sing-box 是否已安装
     if ! command -v sing-box &>/dev/null; then
-        print_error "sing-box 未安装，请先在主菜单选择 [7] 安装/更新 sing-box"
+        print_error "sing-box 未安装，请在主菜单选择 [7] 安装后重试"
+        read -p "按回车返回主菜单..." _
         return 1
     fi
-
-    # 确保密钥已生成（首次安装后需要）
-    gen_keys
-}
-
+    gen_keys  # 确保密钥已生成
     show_banner
     echo -e "${YELLOW}请选择要添加的协议节点:${NC}"
     echo ""
@@ -745,7 +725,6 @@ show_menu() {
     echo ""
     read -p "选择 [1-6]: " choice
 
-    # 清空上次添加的节点显示信息
     NEW_NODE_LINK=""
     NEW_NODE_EXTRA_INFO=""
 
@@ -761,8 +740,10 @@ show_menu() {
 
     if [[ -n "$INBOUNDS_JSON" ]]; then
         if generate_config && start_svc; then
-            # 成功后才显示新节点的链接
             show_new_node_info
+        else
+            print_error "配置生成或服务启动失败"
+            read -p "按回车继续..." _
         fi
     fi
 }
@@ -776,28 +757,17 @@ config_and_view_menu() {
         echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
         echo ""
         echo -e "  ${GREEN}[1]${NC} 重新加载配置并启动服务"
-        echo ""
         echo -e "  ${GREEN}[2]${NC} 查看全部节点链接"
-        echo ""
         echo -e "  ${GREEN}[3]${NC} 查看 Reality 节点"
-        echo ""
         echo -e "  ${GREEN}[4]${NC} 查看 Hysteria2 节点"
-        echo ""
         echo -e "  ${GREEN}[5]${NC} 查看 SOCKS5 节点"
-        echo ""
         echo -e "  ${GREEN}[6]${NC} 查看 ShadowTLS 节点"
-        echo ""
         echo -e "  ${GREEN}[7]${NC} 查看 HTTPS 节点"
-        echo ""
         echo -e "  ${GREEN}[8]${NC} 查看 AnyTLS 节点"
-        echo ""
         echo -e "  ${GREEN}[9]${NC} 删除单个节点"
-        echo ""
         echo -e "  ${GREEN}[10]${NC} 删除全部节点"
-        echo ""
         echo -e "  ${GREEN}[0]${NC} 返回主菜单"
         echo ""
-        
         read -p "请选择 [0-10]: " cv_choice
         
         case $cv_choice in
@@ -813,102 +783,49 @@ config_and_view_menu() {
             2)
                 clear
                 echo -e "${YELLOW}全部节点链接:${NC}"
-                echo ""
-                if [[ -z "$ALL_LINKS_TEXT" ]]; then
-                    echo "(暂无节点)"
-                else
-                    echo -e "$ALL_LINKS_TEXT"
-                fi
-                echo ""
+                if [[ -z "$ALL_LINKS_TEXT" ]]; then echo "(暂无节点)"; else echo -e "$ALL_LINKS_TEXT"; fi
                 read -p "按回车返回..." _
                 ;;
             3)
                 clear
                 echo -e "${YELLOW}Reality 节点:${NC}"
-                echo ""
-                if [[ -z "$REALITY_LINKS" ]]; then
-                    echo "(暂无 Reality 节点)"
-                else
-                    echo -e "$REALITY_LINKS"
-                fi
-                echo ""
+                if [[ -z "$REALITY_LINKS" ]]; then echo "(暂无 Reality 节点)"; else echo -e "$REALITY_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
             4)
                 clear
                 echo -e "${YELLOW}Hysteria2 节点:${NC}"
-                echo ""
-                if [[ -z "$HYSTERIA2_LINKS" ]]; then
-                    echo "(暂无 Hysteria2 节点)"
-                else
-                    echo -e "$HYSTERIA2_LINKS"
-                fi
-                echo ""
+                if [[ -z "$HYSTERIA2_LINKS" ]]; then echo "(暂无 Hysteria2 节点)"; else echo -e "$HYSTERIA2_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
             5)
                 clear
                 echo -e "${YELLOW}SOCKS5 节点:${NC}"
-                echo ""
-                if [[ -z "$SOCKS5_LINKS" ]]; then
-                    echo "(暂无 SOCKS5 节点)"
-                else
-                    echo -e "$SOCKS5_LINKS"
-                fi
-                echo ""
+                if [[ -z "$SOCKS5_LINKS" ]]; then echo "(暂无 SOCKS5 节点)"; else echo -e "$SOCKS5_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
             6)
                 clear
                 echo -e "${YELLOW}ShadowTLS 节点:${NC}"
-                echo ""
-                if [[ -z "$SHADOWTLS_LINKS" ]]; then
-                    echo "(暂无 ShadowTLS 节点)"
-                else
-                    echo -e "$SHADOWTLS_LINKS"
-                    echo -e "${CYAN}提示: 可直接复制上方 ss:// 链接导入客户端${NC}"
-                fi
-                echo ""
+                if [[ -z "$SHADOWTLS_LINKS" ]]; then echo "(暂无 ShadowTLS 节点)"; else echo -e "$SHADOWTLS_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
             7)
                 clear
                 echo -e "${YELLOW}HTTPS 节点:${NC}"
-                echo ""
-                if [[ -z "$HTTPS_LINKS" ]]; then
-                    echo "(暂无 HTTPS 节点)"
-                else
-                    echo -e "$HTTPS_LINKS"
-                fi
-                echo ""
+                if [[ -z "$HTTPS_LINKS" ]]; then echo "(暂无 HTTPS 节点)"; else echo -e "$HTTPS_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
             8)
                 clear
                 echo -e "${YELLOW}AnyTLS 节点:${NC}"
-                echo ""
-                if [[ -z "$ANYTLS_LINKS" ]]; then
-                    echo "(暂无 AnyTLS 节点)"
-                else
-                    echo -e "$ANYTLS_LINKS"
-                fi
-                echo ""
+                if [[ -z "$ANYTLS_LINKS" ]]; then echo "(暂无 AnyTLS 节点)"; else echo -e "$ANYTLS_LINKS"; fi
                 read -p "按回车返回..." _
                 ;;
-            9)
-                delete_single_node
-                read -p "按回车返回..." _
-                ;;
-            10)
-                delete_all_nodes
-                read -p "按回车返回..." _
-                ;;
-            0)
-                break
-                ;;
-            *)
-                print_error "无效选项"
-                ;;
+            9) delete_single_node; read -p "按回车返回..." _ ;;
+            10) delete_all_nodes; read -p "按回车返回..." _ ;;
+            0) break ;;
+            *) print_error "无效选项" ;;
         esac
     done
 }
@@ -916,28 +833,23 @@ config_and_view_menu() {
 # ==================== 节点删除 ====================
 delete_single_node() {
     if [[ ${#INBOUND_TAGS[@]} -eq 0 ]]; then
-        print_warning "当前没有可删除的节点"
-        return 1
+        print_warning "当前没有可删除的节点"; return 1
     fi
     
     echo ""
     echo -e "${CYAN}当前节点列表:${NC}"
     for i in "${!INBOUND_TAGS[@]}"; do
         idx=$((i+1))
-        echo -e "  ${GREEN}[${idx}]${NC} 协议: ${INBOUND_PROTOS[$i]}, 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}, TAG: ${INBOUND_TAGS[$i]}"
+        echo -e "  ${GREEN}[${idx}]${NC} 协议: ${INBOUND_PROTOS[$i]}, 端口: ${INBOUND_PORTS[$i]}, SNI: ${INBOUND_SNIS[$i]}"
     done
     echo ""
     echo -e "${RED}警告: 删除节点后无法恢复！${NC}"
     read -p "请输入要删除的节点序号 (输入 0 取消): " node_idx
     
-    if [[ "$node_idx" == "0" ]]; then
-        print_info "取消删除操作"
-        return 0
-    fi
+    if [[ "$node_idx" == "0" ]]; then print_info "取消删除操作"; return 0; fi
     
     if ! [[ "$node_idx" =~ ^[0-9]+$ ]] || (( node_idx < 1 || node_idx > ${#INBOUND_TAGS[@]} )); then
-        print_error "序号无效"
-        return 1
+        print_error "序号无效"; return 1
     fi
     
     local index=$((node_idx-1))
@@ -951,16 +863,12 @@ delete_single_node() {
     echo -e "  协议: ${proto}"
     echo -e "  端口: ${port}"
     echo -e "  SNI: ${sni}"
-    echo -e "  TAG: ${tag}"
     echo ""
     
     read -p "确认删除? (y/N): " confirm_delete
     confirm_delete=${confirm_delete:-N}
     
-    if [[ ! "$confirm_delete" =~ ^[Yy]$ ]]; then
-        print_info "取消删除操作"
-        return 0
-    fi
+    if [[ ! "$confirm_delete" =~ ^[Yy]$ ]]; then print_info "取消删除操作"; return 0; fi
     
     if [[ -f "${CONFIG_FILE}" ]] && command -v jq &>/dev/null; then
         local temp_config=$(mktemp)
@@ -996,8 +904,7 @@ delete_single_node() {
             print_success "节点已删除"
         fi
     else
-        print_error "无法删除节点"
-        return 1
+        print_error "无法删除节点"; return 1
     fi
 }
 
@@ -1006,12 +913,9 @@ delete_all_nodes() {
     echo -e "${RED}⚠️  警告: 此操作将删除所有节点配置！${NC}"
     echo -e "${YELLOW}当前共有 ${#INBOUND_TAGS[@]} 个节点${NC}"
     echo ""
-    read -p "确认删除所有节点? (输入 'YES' 确认): " confirm_delete
+    read -p "确认删除所有节点? (y/N): " confirm_delete
     
-    if [[ "$confirm_delete" != "YES" ]]; then
-        print_info "取消删除操作"
-        return 0
-    fi
+    if [[ ! "$confirm_delete" =~ ^[Yy]$ ]]; then print_info "取消删除操作"; return 0; fi
     
     INBOUNDS_JSON=""
     INBOUND_TAGS=()
@@ -1042,11 +946,9 @@ EOFCONFIG
     cleanup_links
     print_success "所有节点已删除，配置文件已重置"
     
-    read -p "是否启动空配置的 sing-box 服务? (y/N): " restart_service
+    read -p "是否重新启动服务? (y/N): " restart_service
     restart_service=${restart_service:-N}
-    if [[ "$restart_service" =~ ^[Yy]$ ]]; then
-        start_svc
-    fi
+    if [[ "$restart_service" =~ ^[Yy]$ ]]; then start_svc; fi
 }
 
 # ==================== 中转管理菜单 ====================
@@ -1197,7 +1099,8 @@ ip_config_menu() {
 
 # ==================== 保活（cron + 开机自启 cron） ====================
 setup_keepalive() {
-    # 确保 cron 守护进程已启动且开机自启
+    mkdir -p /etc/cron.d
+    
     if command -v systemctl &>/dev/null; then
         systemctl enable cron 2>/dev/null || systemctl enable crond 2>/dev/null || true
         systemctl start cron 2>/dev/null || systemctl start crond 2>/dev/null || true
@@ -1206,8 +1109,6 @@ setup_keepalive() {
         rc-service crond start 2>/dev/null || true
     fi
 
-    mkdir -p /etc/cron.d  # ⭐ 确保目录存在
-
     local keepalive_cmd="*/5 * * * * root pgrep sing-box >/dev/null || (systemctl restart sing-box 2>/dev/null || rc-service sing-box restart)"
     if [[ -f /etc/cron.d/sing-box-keepalive ]]; then
         print_info "保活任务已存在"
@@ -1215,7 +1116,7 @@ setup_keepalive() {
         if echo "$keepalive_cmd" > /etc/cron.d/sing-box-keepalive 2>/dev/null; then
             print_success "已添加保活任务（每5分钟检查，重启后自动生效）"
         else
-            print_error "无法创建保活任务文件，请检查 /etc/cron.d 权限"
+            print_error "无法创建保活文件，请检查 /etc/cron.d 权限"
         fi
     fi
     case $1 in
@@ -1228,9 +1129,7 @@ setup_keepalive() {
 delete_self() {
     echo -e "${YELLOW}此操作将卸载 sing-box、删除所有配置和脚本，且无法恢复。${NC}"
     read -p "确认完全卸载？(y/N): " CONFIRM_DELETE
-    if [[ ! "$CONFIRM_DELETE" =~ ^[Yy]$ ]]; then
-        print_info "已取消"; return 0
-    fi
+    if [[ ! "$CONFIRM_DELETE" =~ ^[Yy]$ ]]; then print_info "已取消"; return 0; fi
     
     if command -v systemctl &>/dev/null; then
         systemctl stop sing-box 2>/dev/null || true
@@ -1252,39 +1151,28 @@ delete_self() {
 # ==================== 快捷命令 ====================
 setup_sb_shortcut() {
     print_info "创建快捷命令 sb..."
-
-    # 判断当前脚本是否为物理文件，如果不是（管道执行），则自动保存到磁盘
     if [[ ! -f "${SCRIPT_PATH}" ]]; then
-        print_warning "检测到管道执行，正在保存脚本到本地..."
-        if [[ "$0" == "bash" ]] || [[ "$0" == "/dev/fd/"* ]] || [[ ! -f "$0" ]]; then
-            # 管道执行：将当前脚本内容保存到固定路径
-            if command -v wget &>/dev/null; then
-                wget -q -O /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
-                chmod +x /usr/local/bin/install.sh
-                print_success "脚本已保存到 /usr/local/bin/install.sh"
-            elif command -v curl &>/dev/null; then
-                curl -sL -o /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
-                chmod +x /usr/local/bin/install.sh
-                print_success "脚本已保存到 /usr/local/bin/install.sh"
-            else
-                print_error "无法保存脚本，请手动安装 wget 或 curl"
-                return
-            fi
-            SCRIPT_PATH="/usr/local/bin/install.sh"
+        print_warning "检测到管道执行，正在将脚本保存到本地..."
+        if command -v wget &>/dev/null; then
+            wget -q -O /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
+            chmod +x /usr/local/bin/install.sh
+            print_success "脚本已保存到 /usr/local/bin/install.sh"
+        elif command -v curl &>/dev/null; then
+            curl -sL -o /usr/local/bin/install.sh https://raw.githubusercontent.com/JasonV001/Sing-Box-all/main/install.sh
+            chmod +x /usr/local/bin/install.sh
+            print_success "脚本已保存到 /usr/local/bin/install.sh"
+        else
+            print_error "无法保存脚本文件"
+            return
         fi
+        SCRIPT_PATH="/usr/local/bin/install.sh"
     fi
-
-    # 创建 sb 快捷命令
-    if [[ -f "${SCRIPT_PATH}" ]]; then
-        cat > /usr/local/bin/sb << EOSB
+    cat > /usr/local/bin/sb << EOSB
 #!/bin/bash
 bash "${SCRIPT_PATH}" "\$@"
 EOSB
-        chmod +x /usr/local/bin/sb
-        print_success "已创建快捷命令: sb"
-    else
-        print_warning "无法创建快捷命令: 脚本文件不存在"
-    fi
+    chmod +x /usr/local/bin/sb
+    print_success "已创建快捷命令: sb"
 }
 
 # ==================== 配置生成 ====================
@@ -1450,3 +1338,7 @@ main() {
 }
 
 main
+SCRIPT_END
+
+chmod +x /usr/local/bin/install.sh
+bash /usr/local/bin/install.sh
