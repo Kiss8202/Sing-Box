@@ -1204,12 +1204,17 @@ setup_keepalive() {
         rc-service crond start 2>/dev/null || true
     fi
 
+    mkdir -p /etc/cron.d  # ⭐ 确保目录存在
+
     local keepalive_cmd="*/5 * * * * root pgrep sing-box >/dev/null || (systemctl restart sing-box 2>/dev/null || rc-service sing-box restart)"
     if [[ -f /etc/cron.d/sing-box-keepalive ]]; then
         print_info "保活任务已存在"
     else
-        echo "$keepalive_cmd" > /etc/cron.d/sing-box-keepalive
-        print_success "已添加保活任务（每5分钟检查，重启后自动生效）"
+        if echo "$keepalive_cmd" > /etc/cron.d/sing-box-keepalive 2>/dev/null; then
+            print_success "已添加保活任务（每5分钟检查，重启后自动生效）"
+        else
+            print_error "无法创建保活任务文件，请检查 /etc/cron.d 权限"
+        fi
     fi
     case $1 in
         enable) : ;;
