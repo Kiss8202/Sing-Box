@@ -1061,41 +1061,10 @@ setup_reality() {
     save_links_to_files
 }
 
-# ==================== Hysteria2 配置（已升级） ====================
+# ==================== Hysteria2 配置（已升级，含混淆） ====================
 setup_hysteria2() {
     echo ""
-    # 是否启用端口跳跃
-    read -p "是否启用端口跳跃？(y/N): " ENABLE_PORT_JUMP
-    ENABLE_PORT_JUMP=${ENABLE_PORT_JUMP:-N}
-    PORT_START=""
-    PORT_END=""
-    if [[ "$ENABLE_PORT_JUMP" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}端口跳跃将在设定的范围随机选择端口进行通信，提高隐蔽性${NC}"
-        while true; do
-            read -p "起始端口 (例如 1000): " PORT_START
-            read -p "结束端口 (例如 2000): " PORT_END
-            if ! [[ "$PORT_START" =~ ^[0-9]+$ && "$PORT_END" =~ ^[0-9]+$ ]]; then
-                print_error "端口必须为数字"
-                continue
-            fi
-            if (( PORT_START < 1 || PORT_START > 65535 )); then
-                print_error "起始端口超出范围"
-                continue
-            fi
-            if (( PORT_END < PORT_START || PORT_END > 65535 )); then
-                print_error "结束端口必须大于起始端口且小于65536"
-                continue
-            fi
-            if check_port_in_use "$PORT_START"; then
-                print_warning "起始端口 ${PORT_START} 已被占用，请重新输入"
-                continue
-            fi
-            break
-        done
-        PORT=$PORT_START
-    else
-        read_port_with_check 443
-    fi
+    read_port_with_check 443
     
     echo -e "${YELLOW}请输入SNI域名（建议使用常见HTTPS网站域名）${NC}"
     echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
@@ -1129,22 +1098,11 @@ setup_hysteria2() {
     }"
     fi
     
-    # 构建端口跳跃配置（修复：去掉 listen_port_range，只保留 port_range）
-    local port_range_config=""
-    local listen_port=$PORT
-    if [[ "$ENABLE_PORT_JUMP" =~ ^[Yy]$ ]]; then
-        listen_port=$PORT_START
-        local range_num=$((PORT_END - PORT_START + 1))
-        port_range_config=",
-    \"port_range\": ${range_num}"
-    fi
-    
-    # 生成 inbound
     local inbound="{
   \"type\": \"hysteria2\",
-  \"tag\": \"hy2-in-${listen_port}\",
+  \"tag\": \"hy2-in-${PORT}\",
   \"listen\": \"::\",
-  \"listen_port\": ${listen_port},
+  \"listen_port\": ${PORT},
   \"users\": [{\"password\": \"${HY2_PASSWORD}\"}],
   \"tls\": {
     \"enabled\": true,
@@ -1152,7 +1110,7 @@ setup_hysteria2() {
     \"server_name\": \"${HY2_SNI}\",
     \"certificate_path\": \"${CERT_DIR}/${HY2_SNI}/cert.pem\",
     \"key_path\": \"${CERT_DIR}/${HY2_SNI}/private.key\"
-  }${obfs_config}${port_range_config}
+  }${obfs_config}
 }"
     
     if [[ -z "$INBOUNDS_JSON" ]]; then
@@ -1161,12 +1119,7 @@ setup_hysteria2() {
         INBOUNDS_JSON="${INBOUNDS_JSON},${inbound}"
     fi
     
-    # 构建链接
-    local port_display=$PORT
-    if [[ "$ENABLE_PORT_JUMP" =~ ^[Yy]$ ]]; then
-        port_display="${PORT_START}-${PORT_END}"
-    fi
-    LINK="hysteria2://${HY2_PASSWORD}@${SERVER_IP}:${port_display}?insecure=1&sni=${HY2_SNI}"
+    LINK="hysteria2://${HY2_PASSWORD}@${SERVER_IP}:${PORT}?insecure=1&sni=${HY2_SNI}"
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
         LINK="${LINK}&obfs=salamander&obfs-password=${OBFS_PASSWORD}"
     fi
@@ -1177,24 +1130,18 @@ setup_hysteria2() {
     if [[ "$ENABLE_OBFS" =~ ^[Yy]$ ]]; then
         EXTRA_INFO="${EXTRA_INFO}\nSalamander混淆: 已启用 (密码: ${OBFS_PASSWORD})"
     fi
-    if [[ "$ENABLE_PORT_JUMP" =~ ^[Yy]$ ]]; then
-        EXTRA_INFO="${EXTRA_INFO}\n端口跳跃: ${PORT_START}-${PORT_END}"
-    fi
     
-    local line="[Hysteria2] ${SERVER_IP}:${port_display} (SNI: ${HY2_SNI})\n${LINK}\n----------------------------------------\n\n"
+    local line="[Hysteria2] ${SERVER_IP}:${PORT} (SNI: ${HY2_SNI})\n${LINK}\n----------------------------------------\n\n"
     ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${line}"
     HYSTERIA2_LINKS="${HYSTERIA2_LINKS}${line}"
     
-    INBOUND_TAGS+=("hy2-in-${listen_port}")
-    INBOUND_PORTS+=("${listen_port}")
+    INBOUND_TAGS+=("hy2-in-${PORT}")
+    INBOUND_PORTS+=("${PORT}")
     INBOUND_PROTOS+=("${PROTO}")
     INBOUND_SNIS+=("${HY2_SNI}")
     INBOUND_RELAY_TAGS+=("direct")
     
     print_success "Hysteria2 配置完成 (SNI: ${HY2_SNI})"
-    if [[ "$ENABLE_PORT_JUMP" =~ ^[Yy]$ ]]; then
-        print_success "端口跳跃已启用: ${PORT_START}-${PORT_END}"
-    fi
     save_links_to_files
 }
 
