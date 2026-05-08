@@ -409,7 +409,22 @@ gen_keys() {
     
     # UUID 生成：优先使用 uuidgen（Alpine 需要 util-linux），否则用 /proc 伪文件
     UUID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null)
-    SHORT_ID=$(openssl rand -hex 8)
+    
+    # --- 增加 Short ID 自定义 ---
+    echo -e "${YELLOW}是否自定义 Reality Short ID？ (留空则随机生成)${NC}"
+    read -p "Short ID (8位十六进制，如 12345678abcdef): " CUSTOM_SHORT_ID
+    if [[ -n "$CUSTOM_SHORT_ID" ]]; then
+        if [[ ${#CUSTOM_SHORT_ID} -eq 16 && "$CUSTOM_SHORT_ID" =~ ^[0-9a-fA-F]{16}$ ]]; then
+            SHORT_ID="$CUSTOM_SHORT_ID"
+            print_success "使用自定义 Short ID: ${SHORT_ID}"
+        else
+            print_warning "Short ID 格式不正确，已改为随机生成"
+            SHORT_ID=$(openssl rand -hex 8)
+        fi
+    else
+        SHORT_ID=$(openssl rand -hex 8)
+    fi
+    
     HY2_PASSWORD=$(openssl rand -hex 16)
     SS_PASSWORD=$(openssl rand -base64 16)
     SHADOWTLS_PASSWORD=$(openssl rand -hex 16)
@@ -1002,6 +1017,18 @@ setup_reality() {
     read -p "SNI域名 [${DEFAULT_SNI}]: " SNI
     SNI=${SNI:-${DEFAULT_SNI}}
     
+    # --- 增加 ECH 选项 ---
+    read -p "是否启用 ECH (Encrypted Client Hello)？ (y/N): " ENABLE_ECH
+    ENABLE_ECH=${ENABLE_ECH:-N}
+    local ech_config=""
+    if [[ "$ENABLE_ECH" =~ ^[Yy]$ ]]; then
+        ech_config=",
+        \"ech\": {
+            \"enabled\": true
+        }"
+        print_info "已启用 ECH（需要客户端支持）"
+    fi
+    
     print_info "生成配置文件..."
     
     local inbound="{
@@ -1018,7 +1045,7 @@ setup_reality() {
       \"handshake\": {\"server\": \"${SNI}\", \"server_port\": 443},
       \"private_key\": \"${REALITY_PRIVATE}\",
       \"short_id\": [\"${SHORT_ID}\"]
-    }
+    }${ech_config}
   }
 }"
     
