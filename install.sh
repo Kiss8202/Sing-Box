@@ -1022,10 +1022,11 @@ setup_reality() {
     ENABLE_ECH=${ENABLE_ECH:-N}
     local ech_config=""
     if [[ "$ENABLE_ECH" =~ ^[Yy]$ ]]; then
+        # ECH 作为 tls 的直接子项，不与 reality 嵌套
         ech_config=",
-        \"ech\": {
-            \"enabled\": true
-        }"
+    \"ech\": {
+      \"enabled\": true
+    }"
         print_info "已启用 ECH（需要客户端支持）"
     fi
     
