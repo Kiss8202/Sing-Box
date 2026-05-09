@@ -1395,7 +1395,7 @@ setup_https() {
     save_links_to_files
 }
 
-# ==================== AnyTLS 配置 ====================
+# ==================== AnyTLS 配置（已启用随机填充混淆 + UDP 提示） ====================
 setup_anytls() {
     echo ""
     read_port_with_check 443
@@ -1404,6 +1404,18 @@ setup_anytls() {
     echo -e "${CYAN}例如: itunes.apple.com, www.bing.com, time.is${NC}"
     read -p "SNI域名 [${DEFAULT_SNI}]: " ANYTLS_SNI
     ANYTLS_SNI=${ANYTLS_SNI:-${DEFAULT_SNI}}
+    
+    # 是否启用随机填充混淆（推荐启用）
+    read -p "是否启用随机填充混淆 (推荐)？[Y/n]: " ENABLE_PADDING
+    ENABLE_PADDING=${ENABLE_PADDING:-Y}
+    local padding_config=""
+    if [[ "$ENABLE_PADDING" =~ ^[Yy]$ ]]; then
+        padding_config="[\"random\"]"
+        print_info "已启用随机填充混淆"
+    else
+        padding_config="[]"
+        print_info "未启用填充混淆（可能会被深度包检测识别）"
+    fi
     
     print_info "为 ${ANYTLS_SNI} 生成自签证书..."
     gen_cert_for_sni "${ANYTLS_SNI}"
@@ -1416,7 +1428,7 @@ setup_anytls() {
   \"listen\": \"::\",
   \"listen_port\": ${PORT},
   \"users\": [{\"password\": \"${ANYTLS_PASSWORD}\"}],
-  \"padding_scheme\": [],
+  \"padding_scheme\": ${padding_config},
   \"tls\": {
     \"enabled\": true,
     \"server_name\": \"${ANYTLS_SNI}\",
@@ -1434,7 +1446,9 @@ setup_anytls() {
     fi
     
     PROTO="AnyTLS"
-    EXTRA_INFO="密码: ${ANYTLS_PASSWORD}\n自签证书: ${ANYTLS_SNI}\nSNI: ${ANYTLS_SNI}"
+    EXTRA_INFO="密码: ${ANYTLS_PASSWORD}\n自签证书: ${ANYTLS_SNI}\nSNI: ${ANYTLS_SNI}\n填充混淆: $([ "$ENABLE_PADDING" =~ ^[Yy]$ ] && echo "已启用 (随机)" || echo "未启用")"
+    EXTRA_INFO="${EXTRA_INFO}\n\n${GREEN}UDP 支持:${NC} AnyTLS 原生支持 UDP-over-TCP，请在客户端开启 UDP 转发即可使用。"
+    
     local line="[AnyTLS] ${SERVER_IP}:${PORT} (SNI: ${ANYTLS_SNI})\n${LINK}\n----------------------------------------\n\n"
     ALL_LINKS_TEXT="${ALL_LINKS_TEXT}${line}"
     ANYTLS_LINKS="${ANYTLS_LINKS}${line}"
