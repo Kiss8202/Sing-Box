@@ -852,7 +852,7 @@ get_listen_address() {
             echo "0.0.0.0"
             ;;
         "ipv6")
-            echo "::1"
+            echo "::"
             ;;
         "dual"|*)
             echo "::"
