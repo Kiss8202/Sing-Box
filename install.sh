@@ -70,6 +70,16 @@ ANYTLS_PASSWORD=""
 SOCKS_USER=""
 SOCKS_PASS=""
 
+# WARP 配置
+WARP_ENABLED=0          # 0 表示关闭，1 表示开启
+WARP_OUTBOUND_MODE="dual"  # ipv4, ipv6, dual，控制通过 WARP 出站的 IP 版本
+WARP_PRIVATE_KEY=""
+WARP_PUBLIC_KEY=""
+WARP_RESERVED=""
+WARP_IPV4_ADDR=""
+WARP_IPV6_ADDR=""
+WARP_CONFIG_FILE="/etc/sing-box/warp.conf"
+
 # 默认SNI
 DEFAULT_SNI="time.is"
 
@@ -476,6 +486,80 @@ EOF
     
     chmod 600 "${KEY_FILE}"
     print_success "密钥已保存到 ${KEY_FILE}"
+}
+
+# ==================== WARP 管理 ====================
+register_warp() {
+    print_info "正在注册 Cloudflare WARP 账号..."
+    
+    local warp_response=$(curl -sL "https://api.zeroteam.top/warp?format=sing-box")
+    
+    if [[ -z "$warp_response" ]]; then
+        print_error "WARP 注册失败，请检查网络连接"
+        return 1
+    fi
+    
+    # 解析响应 - 使用 jq 更可靠
+    if command -v jq &>/dev/null; then
+        WARP_PRIVATE_KEY=$(echo "$warp_response" | jq -r '.private_key' 2>/dev/null)
+        WARP_RESERVED=$(echo "$warp_response" | jq -c '.reserved' 2>/dev/null)
+        WARP_IPV4_ADDR=$(echo "$warp_response" | jq -r '.v4' 2>/dev/null)
+        WARP_IPV6_ADDR=$(echo "$warp_response" | jq -r '.v6' 2>/dev/null)
+    else
+        # 如果没有 jq，使用简单的 grep
+        WARP_PRIVATE_KEY=$(echo "$warp_response" | grep -Eo '"private_key":"[^"]+"' | head -1 | cut -d'"' -f4)
+        WARP_RESERVED=$(echo "$warp_response" | grep -Eo '"reserved":\[[0-9]+(,[0-9]+){2}\]' | head -1 | cut -d':' -f2)
+        WARP_IPV4_ADDR=$(echo "$warp_response" | grep -Eo '"v4":"[^"]+"' | head -1 | cut -d'"' -f4)
+        WARP_IPV6_ADDR=$(echo "$warp_response" | grep -Eo '"v6":"[^"]+"' | head -1 | cut -d'"' -f4)
+    fi
+    
+    WARP_PUBLIC_KEY="bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
+    
+    # 默认值
+    [[ -z "$WARP_IPV4_ADDR" || "$WARP_IPV4_ADDR" == "null" ]] && WARP_IPV4_ADDR="172.16.0.2/32"
+    [[ -z "$WARP_IPV6_ADDR" || "$WARP_IPV6_ADDR" == "null" ]] && WARP_IPV6_ADDR="2606:4700::/128"
+    [[ -z "$WARP_RESERVED" || "$WARP_RESERVED" == "null" ]] && WARP_RESERVED="[0, 0, 0]"
+    
+    if [[ -z "$WARP_PRIVATE_KEY" || "$WARP_PRIVATE_KEY" == "null" ]]; then
+        print_error "WARP 注册失败，无法获取私钥"
+        return 1
+    fi
+    
+    save_warp_config
+    print_success "WARP 账号注册成功"
+}
+
+save_warp_config() {
+    mkdir -p "$(dirname "${WARP_CONFIG_FILE}")"
+    
+    cat > "${WARP_CONFIG_FILE}" << EOF
+WARP_ENABLED="${WARP_ENABLED}"
+WARP_OUTBOUND_MODE="${WARP_OUTBOUND_MODE}"
+WARP_PRIVATE_KEY="${WARP_PRIVATE_KEY}"
+WARP_PUBLIC_KEY="${WARP_PUBLIC_KEY}"
+WARP_RESERVED="${WARP_RESERVED}"
+WARP_IPV4_ADDR="${WARP_IPV4_ADDR}"
+WARP_IPV6_ADDR="${WARP_IPV6_ADDR}"
+EOF
+    
+    chmod 600 "${WARP_CONFIG_FILE}"
+    print_success "WARP 配置已保存到 ${WARP_CONFIG_FILE}"
+}
+
+load_warp_config() {
+    if [[ -f "${WARP_CONFIG_FILE}" ]] && [[ -r "${WARP_CONFIG_FILE}" ]]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                WARP_ENABLED) WARP_ENABLED="$value" ;;
+                WARP_OUTBOUND_MODE) WARP_OUTBOUND_MODE="$value" ;;
+                WARP_PRIVATE_KEY) WARP_PRIVATE_KEY="$value" ;;
+                WARP_PUBLIC_KEY) WARP_PUBLIC_KEY="$value" ;;
+                WARP_RESERVED) WARP_RESERVED="$value" ;;
+                WARP_IPV4_ADDR) WARP_IPV4_ADDR="$value" ;;
+                WARP_IPV6_ADDR) WARP_IPV6_ADDR="$value" ;;
+            esac
+        done < "${WARP_CONFIG_FILE}"
+    fi
 }
 
 # ==================== 链接文件管理 ====================
@@ -2737,6 +2821,16 @@ show_main_menu() {
     echo -e "  ${CYAN}└─${NC} 入站模式: ${GREEN}${INBOUND_IP_MODE}${NC}     出站模式: ${GREEN}${OUTBOUND_IP_MODE}${NC}"
     echo ""
     
+    # 显示 WARP 状态
+    local warp_status
+    if [[ "$WARP_ENABLED" -eq 1 ]]; then
+        warp_status="${GREEN}已开启${NC} (${WARP_OUTBOUND_MODE})"
+    else
+        warp_status="${RED}已关闭${NC}"
+    fi
+    echo -e "${YELLOW}WARP 状态: ${warp_status}"
+    echo ""
+    
     # 统计中转使用情况
     local relay_count=0
     local direct_count=0
@@ -2861,11 +2955,13 @@ show_main_menu() {
     echo ""
     echo -e "  ${GREEN}[3]${NC} 出入站配置 (IPv4/IPv6)"
     echo ""
-    echo -e "  ${GREEN}[4]${NC} 配置 / 查看节点"
+    echo -e "  ${GREEN}[4]${NC} WARP 配置"
     echo ""
-    echo -e "  ${GREEN}[5]${NC} 重新生成链接文件"
+    echo -e "  ${GREEN}[5]${NC} 配置 / 查看节点"
     echo ""
-    echo -e "  ${GREEN}[6]${NC} 一键删除脚本并退出"
+    echo -e "  ${GREEN}[6]${NC} 重新生成链接文件"
+    echo ""
+    echo -e "  ${GREEN}[7]${NC} 一键删除脚本并退出"
     echo ""
     echo -e "  ${GREEN}[0]${NC} 退出脚本"
     echo ""
@@ -3018,6 +3114,155 @@ config_and_view_menu() {
     done
 }
 
+# ==================== WARP 配置菜单 ====================
+warp_config_menu() {
+    while true; do
+        show_banner
+        echo -e "${CYAN}╔═══════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║              ${GREEN}WARP 配置菜单${CYAN}                        ║${NC}"
+        echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${YELLOW}当前 WARP 状态:${NC}"
+        if [[ "$WARP_ENABLED" -eq 1 ]]; then
+            echo -e "    状态: ${GREEN}已开启${NC}"
+            echo -e "    出站模式: ${GREEN}${WARP_OUTBOUND_MODE}${NC}"
+        else
+            echo -e "    状态: ${RED}已关闭${NC}"
+        fi
+        echo ""
+        
+        if [[ -n "$WARP_PRIVATE_KEY" ]]; then
+            echo -e "  ${CYAN}WARP 账号已注册${NC}"
+        else
+            echo -e "  ${YELLOW}WARP 账号未注册${NC}"
+        fi
+        echo ""
+        
+        echo -e "  ${GREEN}[1]${NC} 注册/重新注册 WARP 账号"
+        echo ""
+        echo -e "  ${GREEN}[2]${NC} 开启 WARP"
+        echo ""
+        echo -e "  ${GREEN}[3]${NC} 关闭 WARP"
+        echo ""
+        echo -e "  ${GREEN}[4]${NC} 设置 WARP 出站为 IPv4"
+        echo ""
+        echo -e "  ${GREEN}[5]${NC} 设置 WARP 出站为 IPv6"
+        echo ""
+        echo -e "  ${GREEN}[6]${NC} 设置 WARP 出站为双栈 (IPv4+IPv6)"
+        echo ""
+        echo -e "  ${GREEN}[0]${NC} 返回主菜单"
+        echo ""
+        
+        read -p "请选择 [0-6]: " w_choice
+        
+        case $w_choice in
+            1)
+                register_warp
+                if [[ $? -eq 0 ]] && [[ -n "$INBOUNDS_JSON" ]]; then
+                    read -p "WARP 账号已注册，是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            2)
+                if [[ -z "$WARP_PRIVATE_KEY" ]]; then
+                    print_warning "请先注册 WARP 账号！"
+                    read -p "按回车返回..." _
+                    continue
+                fi
+                WARP_ENABLED=1
+                save_warp_config
+                print_success "WARP 已开启"
+                if [[ -n "$INBOUNDS_JSON" ]]; then
+                    read -p "是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            3)
+                WARP_ENABLED=0
+                save_warp_config
+                print_success "WARP 已关闭"
+                if [[ -n "$INBOUNDS_JSON" ]]; then
+                    read -p "是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            4)
+                if [[ -z "$WARP_PRIVATE_KEY" ]]; then
+                    print_warning "请先注册 WARP 账号！"
+                    read -p "按回车返回..." _
+                    continue
+                fi
+                WARP_OUTBOUND_MODE="ipv4"
+                save_warp_config
+                print_success "WARP 出站已设置为 IPv4"
+                if [[ "$WARP_ENABLED" -eq 1 && -n "$INBOUNDS_JSON" ]]; then
+                    read -p "是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            5)
+                if [[ -z "$WARP_PRIVATE_KEY" ]]; then
+                    print_warning "请先注册 WARP 账号！"
+                    read -p "按回车返回..." _
+                    continue
+                fi
+                WARP_OUTBOUND_MODE="ipv6"
+                save_warp_config
+                print_success "WARP 出站已设置为 IPv6"
+                if [[ "$WARP_ENABLED" -eq 1 && -n "$INBOUNDS_JSON" ]]; then
+                    read -p "是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            6)
+                if [[ -z "$WARP_PRIVATE_KEY" ]]; then
+                    print_warning "请先注册 WARP 账号！"
+                    read -p "按回车返回..." _
+                    continue
+                fi
+                WARP_OUTBOUND_MODE="dual"
+                save_warp_config
+                print_success "WARP 出站已设置为双栈"
+                if [[ "$WARP_ENABLED" -eq 1 && -n "$INBOUNDS_JSON" ]]; then
+                    read -p "是否立即重新生成配置? (y/N): " regen
+                    if [[ "$regen" =~ ^[Yy]$ ]]; then
+                        generate_config && start_svc
+                        print_success "配置已更新"
+                    fi
+                fi
+                read -p "按回车返回..." _
+                ;;
+            0)
+                break
+                ;;
+            *)
+                print_error "无效选项"
+                ;;
+        esac
+    done
+}
+
 # ==================== 完整卸载 ====================
 delete_self() {
     echo -e "${YELLOW}此操作将卸载 sing-box、删除所有节点配置、证书、快捷命令 sb 和当前脚本，且无法恢复。${NC}"
@@ -3138,8 +3383,9 @@ main_menu() {
         load_relays_from_file
         load_ip_config
         
+        load_warp_config
         show_main_menu
-        read -p "请选择 [0-6]: " m_choice
+        read -p "请选择 [0-7]: " m_choice
         
         case $m_choice in
             1)
@@ -3152,12 +3398,15 @@ main_menu() {
                 ip_config_menu
                 ;;
             4)
-                config_and_view_menu
+                warp_config_menu
                 ;;
             5)
-                regenerate_all_links
+                config_and_view_menu
                 ;;
             6)
+                regenerate_all_links
+                ;;
+            7)
                 delete_self
                 ;;
             0)
